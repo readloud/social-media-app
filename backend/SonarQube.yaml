@@ -1,0 +1,28 @@
+# sonar-project.properties
+sonar.projectKey=social-media-app
+sonar.projectName=Social Media Auto-Schedule App
+sonar.projectVersion=1.0.0
+
+# Sources
+sonar.sources=backend/src,frontend/src
+sonar.tests=backend/test,frontend/__tests__
+sonar.test.inclusions=**/*.spec.ts,**/*.test.ts,**/*.spec.tsx
+
+# Languages
+sonar.language=ts
+sonar.typescript.lcov.reportPaths=coverage/lcov.info
+sonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+# Rules
+sonar.qualitygate.wait=true
+sonar.qualitygate.timeout=600
+
+# Security rules
+sonar.security.sast.reportPaths=reports/sast-report.json
+sonar.security.inclusions=**/*.ts,**/*.js,**/*.tsx,**/*.jsx
+
+# Exclusions
+sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/*.test.ts,**/*.spec.ts
+
+# Coverage
+sonar.coverage.exclusions=**/*.entity.ts,**/*.dto.ts,**/main.ts,**/index.ts
