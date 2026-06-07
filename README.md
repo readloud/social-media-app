@@ -8,7 +8,7 @@
 
 > **Platform auto-schedule posting media sosial enterprise-grade dengan keamanan quantum-resistant, blockchain verification, dan zero-knowledge proofs.**
 
-[Social Media Auto-Schedule Pro Demo](https://readloud.github.io/social-media-app/docs)
+[Social Media Auto-Schedule Pro Demo](https://readloud.github.io/social-media-app/)
 
 ## 📋 Daftar Isi
 
