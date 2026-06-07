@@ -1,0 +1,120 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 50
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 50
+      rampTo: 100
+      name: "Load test"
+    - duration: 60
+      arrivalRate: 100
+      rampTo: 200
+      name: "Peak load"
+    - duration: 60
+      arrivalRate: 50
+      rampTo: 0
+      name: "Cool down"
+  
+  processor: "./artillery-functions.js"
+  
+  plugins:
+    metrics-by-endpoint: {}
+    apdex: {}
+    publish-metrics:
+      - type: datadog
+        apiKey: "{{ $processEnvironment.DATADOG_API_KEY }}"
+  
+  variables:
+    emails:
+      - "user1@example.com"
+      - "user2@example.com"
+      - "user3@example.com"
+  
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "User Journey"
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            email: "{{ $randomEmail() }}"
+            password: "Test123!"
+          capture:
+            json: "$.accessToken"
+            as: "token"
+      
+      - post:
+          url: "/api/v1/posts"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "Artillery test post {{ $randomNumber() }}"
+            publishNow: false
+          capture:
+            json: "$.id"
+            as: "postId"
+      
+      - post:
+          url: "/api/v1/schedules"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            postId: "{{ postId }}"
+            scheduledFor: "{{ $futureDate(1, 'hours') }}"
+      
+      - get:
+          url: "/api/v1/schedules"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      
+      - get:
+          url: "/api/v1/posts/timeline?page=1&limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      
+      - think: 2
+javascript
+// load-test/artillery-functions.js
+const { faker } = require('@faker-js/faker');
+
+module.exports = {
+  generateUserData,
+  randomDate,
+  futureDate,
+  randomEmail,
+};
+
+function generateUserData(context, events, done) {
+  context.vars.email = faker.internet.email();
+  context.vars.username = faker.internet.userName();
+  context.vars.fullName = faker.person.fullName();
+  context.vars.password = 'Test123!';
+  return done();
+}
+
+function randomDate(context, events, done) {
+  const start = new Date();
+  const end = new Date();
+  end.setDate(end.getDate() + 30);
+  context.vars.randomDate = faker.date.between({ from: start, to: end }).toISOString();
+  return done();
+}
+
+function futureDate(context, events, done) {
+  const hours = context.params.hours || 1;
+  const date = new Date();
+  date.setHours(date.getHours() + hours);
+  context.vars.futureDate = date.toISOString();
+  return done();
+}
+
+function randomEmail(context, events, done) {
+  context.vars.randomEmail = faker.internet.email();
+  return done();
+}

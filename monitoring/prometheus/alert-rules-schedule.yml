@@ -1,0 +1,40 @@
+groups:
+  - name: schedule_alerts
+    rules:
+      - alert: HighQueueLatency
+        expr: bullmq_job_duration_seconds{queue="social-post-queue"} > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High schedule processing latency"
+          description: "Jobs taking >30s to process for {{ $labels.queue }}"
+          
+      - alert: QueueBacklogCritical
+        expr: bullmq_queue_length{queue="social-post-queue"} > 5000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical queue backlog"
+          description: "{{ $value }} pending jobs in queue"
+          
+      - alert: HighScheduleFailureRate
+        expr: |
+          rate(schedule_failures_total[5m]) / 
+          rate(schedule_attempts_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High schedule failure rate"
+          description: "{{ $value | humanizePercentage }} failure rate"
+          
+      - alert: DatabaseConnectionPoolExhaustion
+        expr: pg_stat_database_numbackends > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool high"
+          description: "{{ $value }} active connections"

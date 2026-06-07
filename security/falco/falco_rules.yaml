@@ -1,0 +1,59 @@
+- rule: Write below binary dir
+  desc: an attempt to write to any file below a set of binary directories
+  condition: >
+    open_write and
+    container and
+    proc.name != "dpkg" and
+    fd.name startswith /usr/bin and
+    not (fd.name startswith /usr/bin/dpkg)
+  output: >
+    File below /usr/bin written (user=%user.name
+    command=%proc.cmdline file=%fd.name)
+  priority: ERROR
+  tags: [filesystem]
+
+- rule: Read sensitive file trusted after startup
+  desc: >
+    an attempt to read any sensitive file (e.g. files containing
+    credentials/passwords/private keys) in a container after the container
+    has started
+  condition: >
+    sensitive_files and container and
+    not proc.name in (user_expected_read_sensitive_data_processes)
+    and not user_expected_read_sensitive_data_behavior
+  output: >
+    Sensitive file opened for reading (user=%user.name
+    command=%proc.cmdline file=%fd.name parent=%proc.pname)
+  priority: WARNING
+  tags: [filesystem, mitre_credential_access]
+
+- rule: Launch Suspicious Network Tool in Container
+  desc: Detect network tools launched inside a container
+  condition: >
+    spawned_process and container and
+    proc.name in (network_tools)
+  output: >
+    Network tool launched in container (user=%user.name
+    command=%proc.cmdline container_id=%container.id)
+  priority: WARNING
+  tags: [network, container]
+
+- rule: Unexpected outbound connection
+  desc: Detect any outbound connection from a container
+  condition: >
+    outbound and container and
+    not fd.sip in (allowed_outbound_destinations)
+    and not fd.sip in (k8s_ips)
+  output: >
+    Outbound connection outside of allowed destinations
+    (user=%user.name command=%proc.cmdline connection=%fd.name)
+  priority: NOTICE
+  tags: [network, container]
+
+list:
+  - name: network_tools
+    items: [
+      "nmap", "zenmap", "zmap", "nc", "netcat", "telnet",
+      "socat", "tcpdump", "tshark", "wireshark", "nslookup",
+      "dig", "host", "traceroute", "whois"
+    ]

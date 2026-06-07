@@ -1,0 +1,33 @@
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
+  skip-dirs:
+    - node_modules
+    - .git
+    - dist
+    - coverage
+  
+vulnerability:
+  type:
+    - os
+    - library
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+  ignore-unfixed: false
+  ignore-file: .trivyignore
+
+secret:
+  additionalChecks:
+    - '-----BEGIN RSA PRIVATE KEY-----'
+    - '-----BEGIN OPENSSH PRIVATE KEY-----'
+    - 'Authorization: Bearer [a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'
+  
+misconfig:
+  scanner:
+    - dockerfile
+    - kubernetes
+    - terraform

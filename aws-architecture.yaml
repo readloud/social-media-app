@@ -1,0 +1,39 @@
+components:
+  compute:
+    - ECS Fargate (Backend API + Workers)
+    - ECS Service Discovery
+    - Auto-scaling (CPU/Memory based)
+    
+  frontend:
+    - CloudFront CDN
+    - S3 Static Hosting
+    - Next.js SSR on ECS (optional)
+    
+  database:
+    - RDS PostgreSQL (Multi-AZ)
+    - ElastiCache Redis (Primary + Replica)
+    - Read Replicas for analytics
+    
+  storage:
+    - S3 for media files
+    - CloudFront for CDN
+    - S3 Glacier for backups
+    
+  security:
+    - AWS WAF
+    - Shield Advanced
+    - KMS for encryption
+    - Secrets Manager
+    - Nitro Enclaves (TEE)
+    
+  networking:
+    - VPC with public/private subnets
+    - NAT Gateway
+    - Application Load Balancer
+    - Route53 for DNS
+    
+  monitoring:
+    - CloudWatch
+    - X-Ray for tracing
+    - Prometheus + Grafana
+    - AWS Health Dashboard

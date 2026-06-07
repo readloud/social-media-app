@@ -1,0 +1,22 @@
+clair:
+  database:
+    type: pgsql
+    options:
+      source: postgresql://clair:clair@postgres:5432/clair?sslmode=disable
+  api:
+    port: 6060
+    healthport: 6061
+    timeout: 900s
+  updater:
+    interval: 6h
+    enabled: true
+    notificationWebhook: http://webhook/notify
+    
+  notifier:
+    endpoints:
+      - name: webhook
+        type: webhook
+        webhook:
+          endpoint: http://webhook/notify
+          headers:
+            Content-Type: application/json

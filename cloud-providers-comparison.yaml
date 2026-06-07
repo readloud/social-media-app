@@ -1,0 +1,92 @@
+providers:
+  aws:
+    pros:
+      - Most comprehensive services
+      - Global infrastructure (25+ regions)
+      - Mature security features (Nitro Enclaves, KMS)
+      - Excellent documentation
+      - AWS Marketplace integrations
+    cons:
+      - Complex pricing structure
+      - Steep learning curve
+      - Support costs add up
+    estimated_monthly_cost:
+      small_scale: "$300 - $500"
+      medium_scale: "$1,000 - $2,500"
+      large_scale: "$5,000 - $10,000"
+    best_for: "Enterprise, complex architectures"
+    
+  gcp:
+    pros:
+      - Best Kubernetes experience (GKE)
+      - Competitive pricing
+      - Excellent BigQuery for analytics
+      - Global load balancing
+    cons:
+      - Smaller ecosystem than AWS
+      - Less mature AI/ML services
+    estimated_monthly_cost:
+      small_scale: "$250 - $450"
+      medium_scale: "$900 - $2,000"
+      large_scale: "$4,500 - $9,000"
+    best_for: "Kubernetes-native, data analytics heavy"
+    
+  azure:
+    pros:
+      - Best Microsoft integration
+      - Strong enterprise presence
+      - Good hybrid cloud support
+      - Excellent DevOps tools
+    cons:
+      - Portal can be confusing
+      - Regional inconsistency
+    estimated_monthly_cost:
+      small_scale: "$280 - $480"
+      medium_scale: "$950 - $2,200"
+      large_scale: "$4,800 - $9,500"
+    best_for: "Microsoft shops, enterprise customers"
+    
+  digitalocean:
+    pros:
+      - Simple, predictable pricing
+      - Easy to use
+      - Great documentation
+      - Free load balancer
+    cons:
+      - Limited regions
+      - Fewer advanced services
+    estimated_monthly_cost:
+      small_scale: "$60 - $150"
+      medium_scale: "$300 - $800"
+      large_scale: "$1,500 - $3,000"
+    best_for: "Startups, simple deployments"
+    
+  vercel:
+    pros:
+      - Best for Next.js frontend
+      - Automatic SSL
+      - Global CDN
+      - Serverless functions
+    cons:
+      - Not for complex backend
+      - Limited compute options
+    estimated_monthly_cost:
+      free_tier: "$0"
+      pro: "$20/user"
+      enterprise: "Custom"
+    best_for: "Frontend-heavy, Jamstack"
+    
+  railway:
+    pros:
+      - Incredible developer experience
+      - Automatic deployments
+      - Built-in databases
+      - Fair pricing
+    cons:
+      - Newer platform
+      - Limited enterprise features
+    estimated_monthly_cost:
+      small_scale: "$20 - $50"
+      medium_scale: "$100 - $300"
+      large_scale: "$500 - $1,000"
+    best_for: "Startups, rapid development"

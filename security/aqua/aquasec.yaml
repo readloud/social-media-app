@@ -1,0 +1,40 @@
+register:
+  - kind: basic
+    host: aqua-server:8080
+    user: admin
+    password: ${AQUA_PASSWORD}
+
+scan:
+  image:
+    - social-media-backend:latest
+    - social-media-frontend:latest
+  
+  registries:
+    - dockerhub
+    - aws_ecr
+  
+  policies:
+    - "Critical and High Vulnerabilities"
+    - "Sensitive Data Exposure"
+    - "Malware Detection"
+  
+  fail_on:
+    - critical_vulnerabilities
+    - malware_found
+    - sensitive_data
+  
+  reports:
+    - format: html
+      output: reports/aqua-scan.html
+    - format: json
+      output: reports/aqua-scan.json
+    - format: sarif
+      output: reports/aqua-scan.sarif
+
+assess:
+  cicd:
+    - name: "Pre-deployment Security Gate"
+      conditions:
+        - vulnerabilities_critical_count == 0
+        - vulnerabilities_high_count < 3
+        - malware_detected == false
