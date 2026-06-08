@@ -1,0 +1,97 @@
+registries:
+  npm-github:
+    type: npm-registry
+    url: https://npm.pkg.github.com
+    token: ${{ secrets.GITHUB_TOKEN }}
+    
+  docker-hub:
+    type: docker-registry
+    url: https://registry.hub.docker.com
+    username: ${{ secrets.DOCKER_USERNAME }}
+    password: ${{ secrets.DOCKER_PASSWORD }}
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    registries:
+      - npm-github
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Asia/Jakarta"
+    open-pull-requests-limit: 15
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(dev-deps)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "@types/*"
+          - "jest*"
+          - "eslint*"
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=5.0.0"]
+      - dependency-name: "@nestjs/*"
+        versions: [">=10.0.0"]
+    reviewers:
+      - "backend-team"
+    assignees:
+      - "lead-developer"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(dev-deps)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
+    reviewers:
+      - "frontend-team"
+
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "docker"
+      - "backend"
+    reviewers:
+      - "devops-team"
+
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "docker"
+      - "frontend"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "ci-cd"
+      - "github-actions"
+    reviewers:
+      - "devops-team"
