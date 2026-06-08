@@ -1,0 +1,23 @@
+{
+  "name": "new-scheduler-ui",
+  "description": "Enable new scheduler interface with drag-drop functionality",
+  "defaultValue": false,
+  "owner": "frontend-team",
+  "createdAt": "2024-01-15T10:00:00Z",
+  "expiresAt": "2024-04-15T10:00:00Z",
+  "rolloutStrategy": {
+    "percentage": 10,
+    "targetingRules": [
+      {
+        "type": "user_id",
+        "values": ["test-user-1", "test-user-2"]
+      },
+      {
+        "type": "email_domain",
+        "values": ["internal.company.com"]
+      }
+    ]
+  },
+  "dependencies": [],
+  "tags": ["ui", "scheduler", "beta"]
+}
