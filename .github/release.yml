@@ -1,0 +1,39 @@
+changelog:
+  categories:
+    - title: 🚀 Features
+      labels:
+        - enhancement
+        - feature
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
+        - fix
+    - title: 📚 Documentation
+      labels:
+        - documentation
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: ⚡ Performance
+      labels:
+        - performance
+    - title: 🔧 Maintenance
+      labels:
+        - maintenance
+        - chore
+    - title: 🧪 Tests
+      labels:
+        - tests
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+    - title: 💥 Breaking Changes
+      labels:
+        - breaking-change
+
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot
+      - github-actions

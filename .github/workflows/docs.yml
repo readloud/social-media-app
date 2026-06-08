@@ -1,0 +1,170 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'mkdocs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: |
+          npm install -g typedoc
+          npm install -g @mermaid-js/mermaid-cli
+          
+      - name: Generate API documentation
+        run: |
+          cd backend
+          typedoc --out ../docs/api/backend --entryPoints src/index.ts --tsconfig tsconfig.json
+          cd ../frontend
+          typedoc --out ../docs/api/frontend --entryPoints src/index.tsx --tsconfig tsconfig.json
+          
+      - name: Generate architecture diagrams
+        run: |
+          mmdc -i docs/diagrams/architecture.mmd -o docs/diagrams/architecture.png
+          mmdc -i docs/diagrams/sequence.mmd -o docs/diagrams/sequence.png
+          mmdc -i docs/diagrams/deployment.mmd -o docs/diagrams/deployment.png
+          
+      - name: Build MkDocs site
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install MkDocs plugins
+        run: |
+          pip install mkdocs-material
+          pip install mkdocs-mermaid2-plugin
+          pip install mkdocs-minify-plugin
+          pip install mkdocs-git-revision-date-localized-plugin
+          
+      - name: Build documentation
+        run: |
+          mkdocs build --site-dir _site
+          
+      - name: Generate OpenAPI/Swagger docs
+        run: |
+          npx @redocly/openapi-cli bundle backend/swagger.yaml --output docs/api/openapi.yaml
+          npx redoc-cli build docs/api/openapi.yaml --output docs/api/redoc-static.html
+          
+      - name: Create documentation index
+        run: |
+          cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=/mkdocs/" />
+          </head>
+          <body>
+            <p>Redirecting to <a href="/mkdocs/">documentation</a>...</p>
+          </body>
+          </html>
+          EOF
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy-docs:
+    name: Deploy Documentation
+    if: github.ref == 'refs/heads/main'
+    needs: build-docs
+    runs-on: ubuntu-latest
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        
+      - name: Update documentation badge
+        run: |
+          curl -X POST "https://api.github.com/repos/${{ github.repository }}/badges/docs/status" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"state":"success","target_url":"${{ steps.deployment.outputs.page_url }}"}'
+
+  docs-lint:
+    name: Lint Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check spelling
+        uses: crate-ci/typos@master
+        with:
+          config: .github/typos.toml
+          
+      - name: Check markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'yes'
+          folder-path: 'docs'
+          
+      - name: Check dead links in API docs
+        run: |
+          npx broken-link-checker http://localhost:3000 --recursive --exclude facebook.com --exclude twitter.com
+          
+  docs-preview:
+    name: Documentation Preview
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build-docs
+    
+    steps:
+      - name: Deploy preview to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: social-media-docs
+          directory: _site
+          branch: ${{ github.head_ref }}
+          
+      - name: Comment preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const previewUrl = `https://${context.repo.repo}.pages.dev`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `📚 **Documentation Preview Available**\n\nView the documentation preview at: ${previewUrl}\n\nThis preview will auto-update on each push.`
+            });

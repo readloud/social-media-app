@@ -1,0 +1,124 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 */6 * * *' # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Performance test type'
+        required: true
+        default: 'load'
+        type: choice
+        options:
+          - load
+          - stress
+          - endurance
+          - spike
+
+jobs:
+  load-test:
+    name: Load Testing with K6
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup K6
+        uses: grafana/setup-k6-action@v1
+        with:
+          version: '0.48.0'
+          
+      - name: Deploy test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30
+          
+      - name: Run K6 load test
+        run: |
+          k6 run \
+            --out json=results.json \
+            --vus 100 \
+            --duration 5m \
+            load-test/k6-script.js
+        env:
+          BASE_URL: http://localhost:3000
+          
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: results.json
+          
+      - name: Generate performance report
+        uses: grafana/k6-action-reporter@v1
+        with:
+          results-file: results.json
+          output-file: performance-report.html
+          
+      - name: Check performance thresholds
+        run: |
+          # Check if P95 response time > 500ms
+          P95=$(jq '.metrics.http_req_duration.values."p(95)"' results.json)
+          if (( $(echo "$P95 > 500" | bc -l) )); then
+            echo "::error::P95 response time ($P95 ms) exceeds threshold (500 ms)"
+            exit 1
+          fi
+          
+          # Check error rate
+          ERROR_RATE=$(jq '.metrics.http_req_failed.values.rate' results.json)
+          if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
+            echo "::error::Error rate ($ERROR_RATE) exceeds threshold (1%)"
+            exit 1
+          fi
+          
+  artillery-test:
+    name: Artillery Smoke Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Artillery
+        run: npm install -g artillery@latest
+        
+      - name: Run Artillery test
+        run: |
+          artillery run \
+            --output artillery-report.json \
+            load-test/artillery-config.yml
+        env:
+          TARGET_URL: https://staging.socialmedia.com
+          
+      - name: Generate report
+        run: |
+          artillery report artillery-report.json
+          
+  lighthouse-check:
+    name: Lighthouse Performance Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            https://staging.socialmedia.com
+            https://staging.socialmedia.com/scheduler
+            https://staging.socialmedia.com/timeline
+          budgetPath: ./.github/lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          
+      - name: Assert Lighthouse scores
+        run: |
+          # Check performance score >= 90
+          SCORE=$(jq '.summary.performance' lighthouse-results.json)
+          if (( $(echo "$SCORE < 90" | bc -l) )); then
+            echo "::error::Lighthouse performance score ($SCORE) below threshold (90)"
+            exit 1
+          fi

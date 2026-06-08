@@ -1,0 +1,266 @@
+name: Release Management
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: false
+        default: false
+        type: boolean
+      branch:
+        description: 'Branch to release from'
+        required: true
+        default: 'main'
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.version.outputs.version }}
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
+          
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Generate conventional changelog
+          npx conventional-changelog-cli -p angular -r 1 > release-notes.md
+          
+          # Add security highlights
+          echo -e "\n## 🔒 Security Highlights\n" >> release-notes.md
+          git log --pretty=format:"- %s" $(git describe --abbrev=0 --tags...HEAD) | grep -i security >> release-notes.md || echo "No security changes" >> release-notes.md
+          
+          # Add deprecations
+          echo -e "\n## ⚠️ Deprecations\n" >> release-notes.md
+          git log --pretty=format:"- %s" $(git describe --abbrev=0 --tags...HEAD) | grep -i deprecat >> release-notes.md || echo "None" >> release-notes.md
+          
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          draft: false
+          generate_release_notes: false
+          files: |
+            CHANGELOG.md
+            LICENSE
+            README.md
+          discussion_category_name: "Announcements"
+          
+      - name: Create milestone
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.version.outputs.version_number }}';
+            const nextVersion = version.split('.').map((n, i) => i === 1 ? parseInt(n) + 1 : n).join('.');
+            
+            await github.rest.issues.createMilestone({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `v${nextVersion}`,
+              state: 'open',
+              description: `Release v${nextVersion} milestone`
+            });
+
+  build-artifacts:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: create-release
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: ${{ matrix.platform }}
+          
+      - name: Build multi-platform images
+        run: |
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --tag ghcr.io/${{ github.repository }}/backend:${{ needs.create-release.outputs.version }} \
+            --tag ghcr.io/${{ github.repository }}/backend:latest \
+            --push \
+            ./backend
+            
+      - name: Create SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}/backend:${{ needs.create-release.outputs.version }}
+          format: spdx-json
+          output-file: sbom-backend.json
+          
+      - name: Generate attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: sbom-backend.json
+          push-to-registry: true
+          
+      - name: Upload SBOM
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./sbom-backend.json
+          asset_name: sbom-backend.json
+          asset_content_type: application/json
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [create-release, build-artifacts]
+    environment:
+      name: staging
+      url: https://staging.socialmedia.com
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ap-southeast-1
+          
+      - name: Update staging environment
+        run: |
+          aws ecs update-service \
+            --cluster social-media-staging \
+            --service backend-service \
+            --force-new-deployment
+          
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster social-media-staging \
+            --services backend-service
+            
+      - name: Run smoke tests
+        run: |
+          npm run test:smoke -- --base-url=https://staging.socialmedia.com
+
+  security-benchmark:
+    name: Security Benchmark
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run OWASP dependency check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'Social Media Release'
+          path: '.'
+          format: 'HTML'
+          out: 'reports'
+          
+      - name: Generate security report
+        run: |
+          echo "# Security Benchmark Report" > security-report.md
+          echo "## Release: ${{ needs.create-release.outputs.version }}" >> security-report.md
+          echo "## Dependencies" >> security-report.md
+          npm audit --json | jq '.metadata' >> security-report.md
+          
+      - name: Upload security report
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./security-report.md
+          asset_name: security-benchmark.md
+          asset_content_type: text/markdown
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [create-release, deploy-staging]
+    
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "🎉 New release: ${{ needs.create-release.outputs.version }}\nRepository: ${{ github.repository }}\nChangelog: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🎉 New Release: ${{ needs.create-release.outputs.version }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Release Date:*\n$(date +'%Y-%m-%d %H:%M:%S')"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Type:*\n${{ github.event.inputs.prerelease && 'Prerelease' || 'Stable' }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Release Notes"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}",
+                      "style": "primary"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+      - name: Create Twitter post
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Twitter API integration would go here
+            console.log('Tweet: New release ${{ needs.create-release.outputs.version }} of Social Media Scheduler! Check it out: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}')

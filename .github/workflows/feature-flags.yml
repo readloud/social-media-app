@@ -1,0 +1,116 @@
+name: Feature Flag Management
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'feature-flags/**'
+  pull_request:
+    paths:
+      - 'feature-flags/**'
+  workflow_dispatch:
+    inputs:
+      flag_name:
+        description: 'Feature flag name'
+        required: false
+      flag_value:
+        description: 'Flag value (true/false)'
+        required: false
+        type: choice
+        options:
+          - true
+          - false
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+jobs:
+  validate-flags:
+    name: Validate Feature Flags
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate flag definitions
+        run: |
+          # Check for duplicate flag names
+          if [ $(cat feature-flags/*.json | jq -r '.name' | sort | uniq -d | wc -l) -gt 0 ]; then
+            echo "Duplicate flag names found!"
+            exit 1
+          fi
+          
+          # Validate flag schema
+          for flag in feature-flags/*.json; do
+            jq -e '.name and .description and .defaultValue' "$flag" || exit 1
+          done
+          
+      - name: Check for stale flags
+        run: |
+          # Find flags older than 60 days
+          find feature-flags -name "*.json" -mtime +60 -exec echo "Stale flag: {}" \;
+          
+  sync-to-launchdarkly:
+    name: Sync to LaunchDarkly
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Sync flags to LaunchDarkly
+        uses: launchdarkly/ld-find-code-refs-action@v2
+        with:
+          accessToken: ${{ secrets.LAUNCHDARKLY_ACCESS_TOKEN }}
+          projectKey: social-media
+          environmentKey: ${{ github.event.inputs.environment || 'production' }}
+          
+      - name: Update flag statuses
+        run: |
+          for flag in feature-flags/*.json; do
+            FLAG_NAME=$(jq -r '.name' "$flag")
+            FLAG_VALUE=${{ github.event.inputs.flag_value || 'false' }}
+            
+            curl -X PATCH "https://app.launchdarkly.com/api/v2/flags/social-media/$FLAG_NAME" \
+              -H "Authorization: ${{ secrets.LAUNCHDARKLY_ACCESS_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"patch\": [{\"op\": \"replace\", \"path\": \"/environments/production/on\", \"value\": $FLAG_VALUE}]}"
+          done
+
+  create-pr-for-flag:
+    name: Create PR for New Flag
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Detect new flags
+        id: detect
+        run: |
+          git diff origin/main -- feature-flags/ | grep "+name" | awk '{print $3}' >> new-flags.txt
+          echo "new_flags=$(cat new-flags.txt | tr '\n' ',')" >> $GITHUB_OUTPUT
+          
+      - name: Create tracking issue
+        if: steps.detect.outputs.new_flags != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const flags = '${{ steps.detect.outputs.new_flags }}'.split(',');
+            const body = `## New Feature Flags Detected\n\nThe following feature flags were added in PR #${{ github.event.pull_request.number }}:\n\n${flags.map(f => `- \`${f}\``).join('\n')}\n\n### Checklist:\n- [ ] Add documentation\n- [ ] Set rollout percentage\n- [ ] Configure targeting rules\n- [ ] Schedule cleanup date`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Feature Flag Tracking: ${flags[0]}`,
+              body: body,
+              labels: ['feature-flag', 'tracking']
+            });

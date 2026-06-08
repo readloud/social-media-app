@@ -1,0 +1,14 @@
+[default]
+extend-ignore-identifiers-re = [
+    "BA",
+    "nd",
+    "sur",
+    "SO",
+]
+
+[default.extend-words]
+ACL = "ACL"
+ba = "ba"
+nd = "nd"
+sur = "sur"
+SO = "SO"

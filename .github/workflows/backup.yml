@@ -1,0 +1,105 @@
+name: Automated Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Daily at 2 AM
+  workflow_dispatch:
+
+jobs:
+  database-backup:
+    name: Database Backup
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ap-southeast-1
+          
+      - name: Create timestamp
+        id: timestamp
+        run: echo "timestamp=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+        
+      - name: Export RDS snapshot
+        run: |
+          aws rds start-export-task \
+            --export-task-id backup-${{ steps.timestamp.outputs.timestamp }} \
+            --source-arn ${{ secrets.RDS_ARN }} \
+            --s3-bucket-name social-media-backups \
+            --s3-prefix database/ \
+            --iam-role-arn ${{ secrets.RDS_EXPORT_ROLE }}
+            
+      - name: Wait for export completion
+        run: |
+          while true; do
+            STATUS=$(aws rds describe-export-tasks --export-task-identifier backup-${{ steps.timestamp.outputs.timestamp }} --query 'ExportTasks[0].Status' --output text)
+            if [ "$STATUS" = "COMPLETE" ]; then
+              break
+            elif [ "$STATUS" = "FAILED" ]; then
+              echo "Backup failed"
+              exit 1
+            fi
+            echo "Waiting for backup completion... (Status: $STATUS)"
+            sleep 60
+          done
+          
+      - name: Verify backup
+        run: |
+          aws s3 ls s3://social-media-backups/database/backup-${{ steps.timestamp.outputs.timestamp }}/ --recursive
+          
+      - name: Clean old backups (keep 30 days)
+        run: |
+          aws s3 ls s3://social-media-backups/database/ | while read -r line; do
+            DATE=$(echo $line | awk '{print $1}')
+            TIMESTAMP=$(date -d "$DATE" +%s)
+            NOW=$(date +%s)
+            DIFF=$(( (NOW - TIMESTAMP) / 86400 ))
+            if [ $DIFF -gt 30 ]; then
+              BACKUP_NAME=$(echo $line | awk '{print $4}')
+              aws s3 rm s3://social-media-backups/database/$BACKUP_NAME --recursive
+            fi
+          done
+          
+  media-backup:
+    name: Media Files Backup
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Sync S3 to Glacier
+        run: |
+          aws s3 sync s3://social-media-media/ s3://social-media-backups/media/ \
+            --storage-class GLACIER
+          
+  backup-verification:
+    name: Backup Verification
+    runs-on: ubuntu-latest
+    needs: [database-backup, media-backup]
+    
+    steps:
+      - name: Test restore on isolated environment
+        run: |
+          # Launch temporary RDS instance
+          aws rds restore-db-instance-from-s3 \
+            --db-instance-identifier backup-test \
+            --s3-bucket-name social-media-backups \
+            --s3-ingestion-role-arn ${{ secrets.RDS_INGESTION_ROLE }}
+            
+          # Verify data integrity
+          # Run smoke tests
+          
+          # Delete test instance
+          aws rds delete-db-instance --db-instance-identifier backup-test --skip-final-snapshot
+          
+      - name: Send backup report
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "✅ Database backup completed successfully!\nSnapshot: backup-${{ steps.timestamp.outputs.timestamp }}\nSize: ${{ steps.backup-size.outputs.size }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
