@@ -1,0 +1,31 @@
+# Global owners
+* @org/security-team @org/devops-team
+
+# Backend
+/backend/ @org/backend-team
+/backend/src/modules/schedule/ @org/schedule-team
+/backend/src/modules/auth/ @org/auth-team
+
+# Frontend
+/frontend/ @org/frontend-team
+/frontend/src/components/Scheduler/ @org/schedule-team
+/frontend/src/components/Timeline/ @org/frontend-team
+
+# Infrastructure
+/terraform/ @org/devops-team
+/k8s/ @org/devops-team
+/docker-compose*.yml @org/devops-team
+
+# Security
+/.github/workflows/security.yml @org/security-team
+/security/ @org/security-team
+
+# Documentation
+/docs/ @org/docs-team
+/*.md @org/docs-team
+
+# Database migrations
+/backend/src/migrations/ @org/database-team
+
+# Monitoring
+/monitoring/ @org/devops-team @org/sre-team
